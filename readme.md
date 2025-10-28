@@ -11,7 +11,6 @@
   <img src="https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=for-the-badge&logo=node.js" />
   <img src="https://img.shields.io/badge/Express.js-black?style=for-the-badge&logo=express" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/github/stars/naksh1414/Load_Balance?style=for-the-badge&color=yellow" />
 </p>
 
 ---

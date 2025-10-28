@@ -29,6 +29,38 @@ Enhanced with:
 
 ---
 
+### ⚙️ Dynamic Weight Adjustment (Latency-Aware)
+
+The load balancer now dynamically adjusts server weights based on real-time latency metrics.
+Every 10 seconds, each backend’s /health endpoint is probed to measure latency.
+Weights are then inversely adjusted — servers with lower latency gain higher effective weight, ensuring more requests are routed to the fastest nodes.
+
+| Server                  | Base Weight | Avg Latency (ms) | Adjusted Weight |
+| :---------------------- | :---------- | :--------------- | :-------------- |
+| `http://localhost:3001` | 100         | 50               | 200             |
+| `http://localhost:3002` | 24          | 150              | 16              |
+| `http://localhost:3003` | 10          | 90               | 11              |
+
+This keeps routing adaptive and performance-driven, preventing slower servers from becoming bottlenecks.
+
+---
+
+### 🚀 Kernel-Level TCP Optimization
+
+To improve throughput and reduce packet loss under high concurrency, the load balancer applies optimized TCP and socket pooling configurations at runtime.
+
+Applied optimizations include:
+
+Increased maximum concurrent TCP sockets
+
+Global HTTP/HTTPS connection pooling
+
+Reduced latency in establishing TCP handshakes
+
+This ensures faster connection reuse, lower I/O overhead, and better performance under load.
+
+---
+
 ## 🧠 How It Works
 
 This hybrid algorithm intelligently selects the best backend server using:

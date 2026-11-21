@@ -1,208 +1,101 @@
-<!-- Banner -->
+# Hybrid Load Balancer
 
-<h1 align="center">⚡ Hybrid Load Balancer</h1>
+A small HTTP load balancer in Node.js that picks a backend per request by combining three
+strategies: **weighted least connections**, **IP-hash stickiness** and a **round-robin fallback**.
+Backend weights adapt to measured latency, and unhealthy backends are taken out of rotation.
 
-<p align="center">
-  <b>Intelligent Weighted + IP-Hash + Round Robin Load Balancer</b><br>
-  <em>Optimized with kernel-level TCP tuning and connection pooling for high concurrency.</em>
-</p>
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen)
+![Express](https://img.shields.io/badge/Express-4-black)
+![License](https://img.shields.io/badge/license-ISC-blue)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=for-the-badge&logo=node.js" />
-  <img src="https://img.shields.io/badge/Express.js-black?style=for-the-badge&logo=express" />
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" />
-</p>
+## How a backend is chosen
 
----
+For every request, `getHybridServer(clientIp)` in [`load-balancer.js`](load-balancer.js):
 
-## 🚀 Overview
+1. **Filters to healthy backends.** If none are healthy, the request gets `503`.
+2. **Finds the least-loaded backend** by the ratio `activeConnections / weight`.
+3. **Tries IP-hash stickiness.** The client IP is hashed (MD5) to a preferred backend. That
+   backend is used if its load ratio is within **20%** of the best one, so a client keeps hitting
+   the same server unless it is noticeably busier.
+4. **Falls back to round robin** across all backends whose load ratio is within **10%** of the
+   best, spreading traffic evenly when several servers are equally free.
+5. Otherwise it uses the least-loaded backend.
 
-The **Hybrid Load Balancer** is a lightweight, high-performance Node.js load balancer combining:
-- **Weighted Least Connections**
-- **IP Hashing (Session Stickiness)**
-- **Round Robin Fallback**
+Active connections are incremented when a request is proxied and decremented when the
+response finishes.
 
-Enhanced with:
-- ⚙️ **Kernel-level TCP tuning**
-- 🔁 **Connection pooling (keep-alive sockets)**
-- 💪 **Reduced packet loss and improved throughput under high concurrency**
+## Latency-aware weights and health checks
 
----
+Every **10 seconds** each backend's `/health` endpoint is probed (1 s timeout):
 
-### ⚙️ Dynamic Weight Adjustment (Latency-Aware)
+- The measured latency adjusts the backend's effective weight:
+  `weight = max(1, baseWeight × 100 / (latency + 1))`, so faster backends receive more traffic.
+- A backend whose probe fails is marked unhealthy and skipped. It is brought back as soon as a
+  later probe succeeds.
 
-The load balancer now dynamically adjusts server weights based on real-time latency metrics.
-Every 10 seconds, each backend’s /health endpoint is probed to measure latency.
-Weights are then inversely adjusted — servers with lower latency gain higher effective weight, ensuring more requests are routed to the fastest nodes.
+## Architecture
 
-| Server                  | Base Weight | Avg Latency (ms) | Adjusted Weight |
-| :---------------------- | :---------- | :--------------- | :-------------- |
-| `http://localhost:3001` | 100         | 50               | 200             |
-| `http://localhost:3002` | 24          | 150              | 16              |
-| `http://localhost:3003` | 10          | 90               | 11              |
-
-This keeps routing adaptive and performance-driven, preventing slower servers from becoming bottlenecks.
-
----
-
-### 🚀 Kernel-Level TCP Optimization
-
-To improve throughput and reduce packet loss under high concurrency, the load balancer applies optimized TCP and socket pooling configurations at runtime.
-
-Applied optimizations include:
-
-Increased maximum concurrent TCP sockets
-
-Global HTTP/HTTPS connection pooling
-
-Reduced latency in establishing TCP handshakes
-
-This ensures faster connection reuse, lower I/O overhead, and better performance under load.
-
----
-
-## 🧠 How It Works
-
-This hybrid algorithm intelligently selects the best backend server using:
-
-1️⃣ **Weighted Least Connections**  
-Chooses the server with the lowest ratio of `activeConnections / weight`.
-
-2️⃣ **IP Hashing**  
-Ensures session stickiness — if the hashed IP’s server is not overloaded, it’s reused.
-
-3️⃣ **Round Robin Fallback**  
-Distributes requests evenly among similarly loaded servers.
-
----
-
-## 🧩 Architecture
-
-             ┌────────────────────────────┐
-             │        Client Requests      │
-             └────────────┬────────────────┘
-                          │
-                          ▼
-                 ┌────────────────┐
-                 │ Hybrid LB (8000)│
-                 │────────────────│
-                 │ Weighted LC     │
-                 │ + IP Hash       │
-                 │ + Round Robin   │
-                 └──────┬──────────┘
-        ┌─────────────────────────────────────────┐
-        │                 Backend Pool             │
-        ├─────────────────────────────────────────┤
-        │  http://localhost:3001 (weight 100)      │
-        │  http://localhost:3002 (weight 24)       │
-        │  http://localhost:3003 (weight 10)       │
-        └─────────────────────────────────────────┘
-
----
-
-## ⚙️ Setup Instructions
-
-### 1️⃣ Clone the Repository
-```bash
-git clone https://github.com/naksh1414/hybrid-load-balancer.git
-cd hybrid-load-balancer
+```
+            clients
+               │
+               ▼
+   ┌───────────────────────┐
+   │  Load balancer :8000  │  weighted least-connections
+   │  (Express + http-proxy)│  + IP hash + round robin
+   └───────────┬───────────┘
+      ┌────────┼────────┐        health probe every 10 s
+      ▼        ▼        ▼        adjusts weights by latency
+   :3001     :3002     :3003
+  (w=100)   (w=24)    (w=10)
 ```
 
-### Install Dependencies
+## Run it locally
+
+Requires Node.js 18+.
+
 ```bash
+git clone https://github.com/naksh1414/Load_Balancer.git
+cd Load_Balancer
 npm install
+
+# start three example backends (separate terminals)
+PORT=3001 node server.js
+PORT=3002 node server.js
+PORT=3003 node server.js
+
+# start the load balancer on :8000
+node load-balancer.js
 ```
 
-### 3️⃣ Start Example Backend Servers
-``` bash
-node server1.js   # port 3001
-node server2.js   # port 3002
-node server3.js   # port 3003
+Then send requests to `http://localhost:8000/` and watch the logs show which strategy chose
+each backend.
 
-```
+## Tests and metrics
 
-###  4️⃣ Run the Load Balancer
+With the backends and load balancer running:
+
 ```bash
-node index.js
-
+npx mocha test_load_balancer.js   # checks requests are distributed across backends
+npm run metrics                     # latency / throughput / error-rate score
 ```
 
-### ⚡ TCP & Connection Pool Optimization
-``` bash
-const agent = new http.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 60000,
-  maxSockets: 1000,
-  maxFreeSockets: 256,
-  timeout: 60000,
-  noDelay: true
-});
+## Project structure
 
-```
+| File | Purpose |
+| --- | --- |
+| `load-balancer.js` | Selection algorithm, health checks, proxying |
+| `server.js` | Example backend with `/` and `/health` |
+| `test_load_balancer.js` | Mocha test for request distribution |
+| `runMetricsTest.js` | Simple latency and throughput scoring script |
 
-| Setting          | Description                              |
-| ---------------- | ---------------------------------------- |
-| `keepAlive`      | Keeps TCP sockets open for reuse         |
-| `keepAliveMsecs` | Duration sockets are kept alive          |
-| `maxSockets`     | Max active connections per backend       |
-| `maxFreeSockets` | Max idle connections retained            |
-| `noDelay`        | Disables Nagle’s algorithm (low latency) |
-| `timeout`        | Closes inactive sockets after 60s        |
+## Possible next steps
 
-### 🧾 Kernel-Level TCP Tuning (Linux/macOS)
-To fully optimize throughput, update /etc/sysctl.conf:
-``` bash 
-# Max open sockets and backlog
-fs.file-max = 2097152
-net.core.somaxconn = 65535
+- Configure backends from environment or a service registry instead of a fixed list
+- Per-client rate limiting backed by Redis
+- Containerise with Docker Compose for one-command startup
+- Concurrent load testing (e.g. autocannon or k6) for realistic throughput numbers
 
-# TCP buffer sizes
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 87380 16777216
-net.ipv4.tcp_wmem = 4096 65536 16777216
+## Author
 
-# Connection reuse and fast close
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_fin_timeout = 15
-
-# Enable fast open and window scaling
-net.ipv4.tcp_fastopen = 3
-net.ipv4.tcp_window_scaling = 1
-net.ipv4.tcp_low_latency = 1
-
-# Increase ephemeral ports
-net.ipv4.ip_local_port_range = 1024 65535
-
-```
-
-| Metric      | Before Tuning | After Tuning     |
-| ----------- | ------------- | ---------------- |
-| Avg Latency | 120 ms        | **60 ms**        |
-| Throughput  | 5,000 req/s   | **9,200+ req/s** |
-| CPU Usage   | 90%           | **65%**          |
-| Packet Loss | 3.2%          | **<0.5%**        |
-
-### 🧰 Tech Stack
-
-Node.js
-
-Express.js
-
-http-proxy
-
-Crypto (MD5-based hashing)
-
-Linux Kernel Tuning
-
-### 👨‍💻 Author
-Software Engineer • MetaUpSpace
-📧 nakshatramanglik14@gmail.com
-
-💻 GitHub: naksh1414
-
-
-
-
-
-
+Nakshatra Manglik · [nakshatramanglik14@gmail.com](mailto:nakshatramanglik14@gmail.com) ·
+[GitHub](https://github.com/naksh1414)

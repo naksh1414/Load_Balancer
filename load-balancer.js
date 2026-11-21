@@ -104,6 +104,7 @@ async function monitorServerLatency() {
       await axios.get(`${server.url}/health`, { timeout: 1000 });
       const latency = Date.now() - start;
       server.latency = latency;
+      server.active = true; // bring a recovered backend back into rotation
 
       // Adjust weight inversely proportional to latency
       // (lower latency => higher effective weight)

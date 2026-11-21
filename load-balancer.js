@@ -121,8 +121,6 @@ async function monitorServerLatency() {
   }
 }
 
-// Run latency monitoring every 10 seconds
-setInterval(monitorServerLatency, 10000);
 
 /* ------------------------------ Request Handling ------------------------------ */
 
@@ -151,7 +149,15 @@ app.use((req, res, next) => {
 
 /* ------------------------------ Start Server ------------------------------ */
 
-app.listen(PORT, () => {
-  console.log(`🚀 Hybrid Load Balancer running on port ${PORT}`);
-  monitorServerLatency(); // initial check
-});
+// Start only when run directly (`node load-balancer.js`), so tests can import the logic.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Hybrid Load Balancer running on port ${PORT}`);
+    monitorServerLatency(); // initial check
+  });
+
+  // Run latency monitoring every 10 seconds
+  setInterval(monitorServerLatency, 10000);
+}
+
+module.exports = { app, BackendServer, servers, getHybridServer, monitorServerLatency, ipHash };

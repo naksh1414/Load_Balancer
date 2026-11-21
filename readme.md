@@ -7,6 +7,7 @@ Backend weights adapt to measured latency, and unhealthy backends are taken out 
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen)
 ![Express](https://img.shields.io/badge/Express-4-black)
 ![License](https://img.shields.io/badge/license-ISC-blue)
+[![CI](https://github.com/naksh1414/Load_Balancer/actions/workflows/ci.yml/badge.svg)](https://github.com/naksh1414/Load_Balancer/actions/workflows/ci.yml)
 
 ## How a backend is chosen
 
@@ -35,18 +36,15 @@ Every **10 seconds** each backend's `/health` endpoint is probed (1 s timeout):
 
 ## Architecture
 
-```
-            clients
-               │
-               ▼
-   ┌───────────────────────┐
-   │  Load balancer :8000  │  weighted least-connections
-   │  (Express + http-proxy)│  + IP hash + round robin
-   └───────────┬───────────┘
-      ┌────────┼────────┐        health probe every 10 s
-      ▼        ▼        ▼        adjusts weights by latency
-   :3001     :3002     :3003
-  (w=100)   (w=24)    (w=10)
+```mermaid
+flowchart LR
+    C[Clients] --> LB["Load balancer :8000<br/>weighted least-connections<br/>+ IP hash + round robin"]
+    LB --> S1["Backend :3001<br/>weight 100"]
+    LB --> S2["Backend :3002<br/>weight 24"]
+    LB --> S3["Backend :3003<br/>weight 10"]
+    LB -. "GET /health every 10 s<br/>latency adjusts weight" .-> S1
+    LB -.-> S2
+    LB -.-> S3
 ```
 
 ## Run it locally
@@ -70,13 +68,24 @@ node load-balancer.js
 Then send requests to `http://localhost:8000/` and watch the logs show which strategy chose
 each backend.
 
-## Tests and metrics
-
-With the backends and load balancer running:
+## Tests
 
 ```bash
-npx mocha test_load_balancer.js   # checks requests are distributed across backends
-npm run metrics                     # latency / throughput / error-rate score
+npm test
+```
+
+Unit tests in [`test/selection.test.js`](test/selection.test.js) use Node's built-in test runner
+and need no running servers. They cover least-connections selection, skipping unhealthy
+backends, round robin between equally loaded backends, IP-hash stickiness, moving a client off
+an overloaded sticky backend, and health checks taking a backend out of rotation and bringing
+it back. They run on every push via GitHub Actions.
+
+With the backends and load balancer running, you can also run the end-to-end distribution test
+and the metrics script:
+
+```bash
+npx mocha test_load_balancer.js
+npm run metrics
 ```
 
 ## Project structure
@@ -85,7 +94,8 @@ npm run metrics                     # latency / throughput / error-rate score
 | --- | --- |
 | `load-balancer.js` | Selection algorithm, health checks, proxying |
 | `server.js` | Example backend with `/` and `/health` |
-| `test_load_balancer.js` | Mocha test for request distribution |
+| `test/selection.test.js` | Unit tests for the selection algorithm and health checks |
+| `test_load_balancer.js` | End-to-end distribution test (needs running servers) |
 | `runMetricsTest.js` | Simple latency and throughput scoring script |
 
 ## Possible next steps
